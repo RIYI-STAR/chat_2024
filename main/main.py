@@ -49,7 +49,8 @@ class SQL:
 
     def get_user(self, user):
         c = self.conn.cursor()
-        c.execute(f"select user, password, name, last_login_ip, try_to_login_ip from chat_2024.users where user='{user}'")
+        c.execute(
+            f"select user, password, name, last_login_ip, try_to_login_ip from chat_2024.users where user='{user}'")
         r = c.fetchall()
         c.close()
         return r
@@ -77,42 +78,45 @@ class SQL:
             ip = addr[0]
             self.record_try_login_ip(user, ip)
             info = self.get_user(user)
+            status = self.get_user_status(user)
             try_to_login_ip = info[0][4].split(';')[0]
+
+            if status[0][0] == -1:
+                return 3
 
             '''检测是否多次登录(防爆破)'''
             if try_to_login_ip == ip:
                 self.add_user_status(user)
-                status = self.get_user_status(user)
+
                 if status[0][0] > 5:
                     last_login_time = status[0][1]
 
                     if (now - last_login_time).total_seconds() <= 600:
                         return 2
                     else:
-                        self.clear_user_status(user)
+                        self.set_user_status(user, 1)
                 else:
                     c.execute(
                         f"update chat_2024.users set status_update_time='{now.strftime(ISOTIMEFORMAT)}' where user='{user}'")
-
 
             c.execute(f"select password from chat_2024.users where user='{user}'")
             passwd = c.fetchall()[0]
 
             if passwd[0] == password:
-                self.clear_user_status(user)
                 c.execute(
                     f"update chat_2024.users set status_update_time='{now.strftime(ISOTIMEFORMAT)}' where user='{user}'")
                 self.record_last_login_ip(user, ip)
+                self.set_user_status(user, 0)
                 return 0  # 0表示登录成功
 
             return 1  # 1表示密码错误
 
         except AttributeError:
-            print('error')
+            print('AttributeError')
             return -1
         except IndexError:
             print('IndexError')
-            return -1  # -1表示无此账号
+            return -1  # -1表示账号异常
 
     def add_user_status(self, user):
         c = self.conn.cursor()
@@ -120,9 +124,9 @@ class SQL:
         c.close()
         return 1
 
-    def clear_user_status(self, user):
+    def set_user_status(self, user, status):
         c = self.conn.cursor()
-        c.execute(f"UPDATE chat_2024.users SET status=1 WHERE user = '{user}'")
+        c.execute(f"UPDATE chat_2024.users SET status={status} WHERE user = '{user}'")
         c.close()
         return 1
 
@@ -135,7 +139,8 @@ class SQL:
 
     def record_try_login_ip(self, user, ip):
         c = self.conn.cursor()
-        c.execute(f"update chat_2024.users as u set u.try_to_login_ip = concat('{ip};', u.try_to_login_ip) where u.user='{user}'")
+        c.execute(
+            f"update chat_2024.users as u set u.try_to_login_ip = concat('{ip};', u.try_to_login_ip) where u.user='{user}'")
         c.close()
         return 1
 
@@ -219,13 +224,13 @@ def main():
                     user_list.append(nickname)  # 用户列表更新，加入新用户（新的套接字）
                     curtime = datetime.now().strftime(ISOTIMEFORMAT)
                     print(curtime)
-                    print(nickname + ' 进入了聊天室!')
+                    print('用户', nickname, '登录成功')
 
-                    with open('../serverlog.txt', 'a+') as serverlog:  # log记录
-                        serverlog.write(str(curtime) + '  ' + nickname + ' 进入了聊天室!\n')
+                    # with open('../serverlog.txt', 'a+') as serverlog:  # log记录
+                    #     serverlog.write(str(curtime) + '  ' + nickname + ' 进入了聊天室!\n')
 
-                    for client in socket_list[0:len(socket_list) - 1]:  # 其他套接字通知
-                        client.send(('系统消息：' + nickname + ' 进入了聊天室！').encode('utf-8'))
+                    # for client in socket_list[0:len(socket_list) - 1]:  # 其他套接字通知
+                    #     client.send(('系统消息：' + nickname + ' 进入了聊天室！').encode('utf-8'))
 
                     # 加入线程中跑，加入函数为socket_target，参数为conn_socket,nickname
                     threading.Thread(target=socket_target, args=(conn_socket, nickname,)).start()
