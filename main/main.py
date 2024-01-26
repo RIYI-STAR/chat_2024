@@ -47,14 +47,6 @@ class SQL:
             print("无法正常关闭数据库。。。")
             pass
 
-    def get_user(self, user):
-        c = self.conn.cursor()
-        c.execute(
-            f"select user, password, name, last_login_ip, try_to_login_ip from chat_2024.users where user='{user}'")
-        r = c.fetchall()
-        c.close()
-        return r
-
     def register(self, user, password, name):
         try:
             c = self.conn.cursor()
@@ -106,7 +98,7 @@ class SQL:
                 c.execute(
                     f"update chat_2024.users set status_update_time='{now.strftime(ISOTIMEFORMAT)}' where user='{user}'")
                 self.record_last_login_ip(user, ip)
-                self.set_user_status(user, 0)
+                self.set_user_status(user, 1)
                 return 0  # 0表示登录成功
 
             return 1  # 1表示密码错误
@@ -115,8 +107,15 @@ class SQL:
             print('AttributeError')
             return -1
         except IndexError:
-            print('IndexError')
             return -1  # -1表示账号异常
+
+    def get_user(self, user):
+        c = self.conn.cursor()
+        c.execute(
+            f"select user, password, name, last_login_ip, try_to_login_ip from chat_2024.users where user='{user}'")
+        r = c.fetchall()
+        c.close()
+        return r
 
     def add_user_status(self, user):
         c = self.conn.cursor()
@@ -151,54 +150,23 @@ class SQL:
         return 1
 
 
-# 聊天记录存储至当前目录下的serverlog.txt文件中
-try:
-    with open('../serverlog.txt', 'a+') as serverlog:
-        curtime = datetime.now().strftime(ISOTIMEFORMAT)
-        serverlog.write('\n\n-----------服务器打开时间：' + str(curtime) + '，开始记录聊天-----------\n')
-except:
-    print('ERROR!')
-
-# 读取套接字连接
-s = socket()
-s.bind((SOCK_IP, SOCK_PORT))
-s.listen()
-
-
-def read_client(s, nickname):
-    try:
-        return s.recv(4096).decode('utf-8')  # 获取此套接字（用户）发送的消息
-    except:  # 一旦断开连接则记录log以及向其他套接字发送相关信息
-        curtime = datetime.now().strftime(ISOTIMEFORMAT)  # 获取当前时间
-        print(curtime)
-        print(nickname + ' 离开了聊天室!')
-        with open('../serverlog.txt', 'a+') as serverlog:  # log记录
-            serverlog.write(str(curtime) + '  ' + nickname + ' 离开了聊天室!\n')
-        socket_list.remove(s)
-        user_list.remove(nickname)
-        for client in socket_list:  # 其他套接字通知（即通知其他聊天窗口）
-            client.send(('系统消息：' + nickname + ' 离开了聊天室!').encode('utf-8'))
-
-
-# 接收Client端消息并发送
-def socket_target(s, nickname):
-    try:
-        s.send((','.join(user_list)).encode('utf-8'))  # 将用户列表送给各个套接字，用逗号隔开
-        while True:
-            content = read_client(s, nickname)  # 获取用户发送的消息
-            if content is None:
+def sign_out(s, nickname):
+    while 1:
+        try:
+            r = s.recv(2048)
+            if not r:
+                print(1)
+            r = eval(r.decode())
+            if r["type"] == 'exit' or not r:
                 break
-            else:
-                curtime = datetime.now().strftime(ISOTIMEFORMAT)  # 系统时间打印
-                print(curtime)
-                print(nickname + ' ：' + content)
-                with open('../serverlog.txt', 'a+') as serverlog:  # log记录
-                    serverlog.write(str(curtime) + '  ' + nickname + ' ：' + content + '\n')
-                for client in socket_list:  # 其他套接字通知
-                    client.send((nickname + ' ：' + content).encode('utf-8'))
-    except:
-        print('Error!')
-
+        except:
+            break
+    s.close()
+    curtime = datetime.now().strftime(ISOTIMEFORMAT)  # 获取当前时间
+    print(curtime)
+    print(f'用户 {nickname} 退出登录')
+    with open('../serverlog.txt', 'a+') as serverlog:  # log记录
+        serverlog.write(f'{curtime} {nickname} 退出登录\n')
 
 def main():
     global addr
@@ -217,23 +185,22 @@ def main():
                     "code": fail_to_login
                 }
                 conn_socket.send(f'{login_status}'.encode())
-                if not fail_to_login:
+                if not fail_to_login:  # 登录成功后
                     socket_list.append(conn_socket)  # 套接字列表更新
                     nickname = sql.get_user(login_info['data']['user'])[0][2]
 
                     user_list.append(nickname)  # 用户列表更新，加入新用户（新的套接字）
                     curtime = datetime.now().strftime(ISOTIMEFORMAT)
                     print(curtime)
-                    print('用户', nickname, '登录成功')
+                    print(f'用户 {nickname} 登录成功')
+                    print(f'登录IP：{addr[0]}')
+                    print('')
 
-                    # with open('../serverlog.txt', 'a+') as serverlog:  # log记录
-                    #     serverlog.write(str(curtime) + '  ' + nickname + ' 进入了聊天室!\n')
-
-                    # for client in socket_list[0:len(socket_list) - 1]:  # 其他套接字通知
-                    #     client.send(('系统消息：' + nickname + ' 进入了聊天室！').encode('utf-8'))
+                    with open('../serverlog.txt', 'a+') as serverlog:  # log记录
+                        serverlog.write(f'{curtime} {nickname} 登录\n')
 
                     # 加入线程中跑，加入函数为socket_target，参数为conn_socket,nickname
-                    threading.Thread(target=socket_target, args=(conn_socket, nickname,)).start()
+                    threading.Thread(target=sign_out, args=(conn_socket, nickname,)).start()
 
         except:
             pass
@@ -245,6 +212,20 @@ def clean():
 
 
 if __name__ == '__main__':
+
+    # 聊天记录存储至当前目录下的serverlog.txt文件中
+    try:
+        with open('../serverlog.txt', 'a+') as serverlog:
+            curtime = datetime.now().strftime(ISOTIMEFORMAT)
+            serverlog.write('\n\n-----------服务器打开时间：' + str(curtime) + '，开始记录聊天-----------\n')
+    except:
+        print('ERROR!')
+
+    # 读取套接字连接
+    s = socket()
+    s.bind((SOCK_IP, SOCK_PORT))
+    s.listen()
+
     sql = SQL()  # 启动数据库
     # PASSWD = input("请输入开服密码：")  # 开服密码不再是端口（密码设置为端口会导致密码重复（大规模时）以及位数限定（端口数量有限））
     threading.Thread(target=main).start()
