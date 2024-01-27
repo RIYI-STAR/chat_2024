@@ -19,11 +19,12 @@ class Login:
         self.window = tk.Tk()
         self.window.title('')
         self.window.geometry('400x600')
+        self.window.iconbitmap('images/login.ico')
         self.window.iconbitmap(default="")
         self.window.resizable(False, False)
 
         canvas = tk.Canvas(self.window, height=400, width=400)
-        im = Image.open("images/chat.png")
+        im = Image.open("images/starchat.png")
         image_file = ImageTk.PhotoImage(im)
         canvas.create_image(170, 40, anchor='nw', image=image_file)
         canvas.pack(side='top')
@@ -113,7 +114,8 @@ class Chat:
     def __init__(self, s):
         self.master = tk.Tk()
         self.s = s
-        self.master.title("Chat_2024")
+        self.master.iconbitmap('images/starchat.ico')
+        self.master.title("StarChat")
         self.master.geometry("650x400")
         self.master.resizable(False, False)
         self.master.overrideredirect(False)
